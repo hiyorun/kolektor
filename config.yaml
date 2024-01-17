@@ -1,0 +1,53 @@
+---
+store:
+  on_change: false            # save if state changed. # default false
+  retention: 24h              # retention period for data. # default 24h
+
+collectors:
+  - interval: 5s              # you can initiate more collectors with different intervals.
+    type: systemd             # type can be: systemd
+    nodes:
+      - ip: 172.10.25.17
+        username: rhel
+        services:
+          - name: redis
+            group: redis
+            importance: low
+            ports:
+              - 7001
+              - 7002
+              - 7003
+              - 7004
+          - name: nginx
+            group: tems
+            importance: low
+      - ip: 172.10.25.15
+        username: rhel
+        services:
+          - name: tems
+            group: tems
+            importance: high
+
+  - interval: 2s
+    type: systemd
+    nodes:
+      - ip: 172.10.25.5
+        username: hiyo
+        services:
+          - name: coredns
+            group: dns
+            importance: low
+      - ip: 172.10.25.3
+        username: hiyo
+        services:
+          - name: coredns
+            group: dns
+            importance: low
+
+database:
+  path: /tmp/kolektor
+
+http:
+  host: 0.0.0.0
+  port: 8080
+...
