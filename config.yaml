@@ -15,17 +15,14 @@ collectors:
             importance: low
             ports:
               - 7001
-              - 7002
-              - 7003
-              - 7004
           - name: nginx
-            group: tems
+            group: frontend
             importance: low
       - ip: 172.10.25.15
         username: rhel
         services:
-          - name: tems
-            group: tems
+          - name: frontend
+            group: frontend
             importance: high
 
   - interval: 2s
