@@ -13,5 +13,9 @@ func (h *HTTPServer) Endpoints() []Endpoint {
 			Pattern: "/api/v1/system/health",
 			Handler: h.SysHealth,
 		},
+		{
+			Pattern: "/api/v1/system/health/latest",
+			Handler: h.LatestSysHealth,
+		},
 	}
 }

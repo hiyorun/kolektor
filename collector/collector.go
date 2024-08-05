@@ -15,6 +15,8 @@ func CollectorFactory(cfg config.Collector, interval time.Duration) (Collector, 
 	switch cfg.Type {
 	case "systemd":
 		return NewSystemdCollector(cfg.Nodes, interval), nil
+	case "kolektor":
+		return NewClientCollector(cfg.Nodes, interval), nil
 	default:
 		return nil, fmt.Errorf("unsupported collector: %s", cfg.Type)
 	}

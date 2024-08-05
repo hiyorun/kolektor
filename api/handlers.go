@@ -9,16 +9,16 @@ import (
 	"github.com/charmbracelet/log"
 )
 
-type healthReport struct {
-	Report []timeRange `json:"report"`
+type HealthReport struct {
+	Report []StatusTimeFrame `json:"report"`
 }
 
-type timeRange struct {
-	Timestamp time.Time   `json:"timestamp"`
-	Statuses  []subSystem `json:"statuses"`
+type StatusTimeFrame struct {
+	Timestamp time.Time         `json:"timestamp"`
+	Statuses  []SubSystemStatus `json:"statuses"`
 }
 
-type subSystem struct {
+type SubSystemStatus struct {
 	Name   string `json:"name"`
 	Health string `json:"health"`
 }
@@ -41,14 +41,34 @@ func (h *HTTPServer) SysHealth(w http.ResponseWriter, r *http.Request) {
 		duration = time.Hour
 	}
 
-	healthReport, err := h.getSubsystemHealth(timeFrom, timeTo, duration)
+	HealthReport, err := h.getSubsystemHealth(timeFrom, timeTo, duration)
+	if err != nil {
+		log.Error("Can not get historical health report", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	res, err := json.Marshal(HealthReport)
+	if err != nil {
+		log.Error("Failed to marshal health historical report", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(res)
+}
+
+func (h *HTTPServer) LatestSysHealth(w http.ResponseWriter, r *http.Request) {
+	HealthReport, err := h.getSubsystemHealth(time.Now(), time.Now(), time.Hour)
 	if err != nil {
 		log.Error("Can not get latest health report", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	res, err := json.Marshal(healthReport)
+	res, err := json.Marshal(HealthReport)
 	if err != nil {
 		log.Error("Failed to marshal health latest report", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -60,40 +80,43 @@ func (h *HTTPServer) SysHealth(w http.ResponseWriter, r *http.Request) {
 	w.Write(res)
 }
 
-func (h *HTTPServer) getSubsystemHealth(from, to time.Time, interval time.Duration) (healthReport, error) {
-	var report healthReport
+func (h *HTTPServer) getSubsystemHealth(from, to time.Time, interval time.Duration) (HealthReport, error) {
+	var report HealthReport
+
+	query := `
+	WITH latest AS (
+		SELECT
+			ss.name,
+			ss.label,
+			MAX(ss.id) AS id
+		FROM
+			service_status ss
+		WHERE
+			ss.timestamp >= datetime(?,'unixepoch','localtime')
+			AND ss.timestamp <= datetime(?,'unixepoch','localtime')
+		GROUP BY
+			ss.name,
+			ss.label
+	)
+	SELECT
+		l.name,
+		ss.timestamp,
+		ss.load,
+		ss.status,
+		ss.substatus,
+		ss.label
+	FROM
+		latest l
+	JOIN service_status ss
+		ON l.id = ss.id;
+	`
+
+	groupedUnits := make(map[string][]collector.Unit)
+
 	for i := from; i.Before(to); i = i.Add(interval) {
 		var units []collector.Unit
 
-		query := `
-		with latest as (
-			select
-				ss.name,
-				ss.label,
-				max(ss.id) as id
-			from
-				service_status ss
-			where
-				ss."timestamp" >= ?
-			and
-				ss."timestamp" <= ?
-			group by
-				ss.name,
-				ss.label
-		)
-		select
-			l.name,
-			ss."timestamp",
-			ss.load,
-			ss.status,
-			ss.substatus,
-			ss.label
-		from
-			latest l
-		join service_status ss
-			using(id);
-		`
-		rows, err := h.db.Query(query, from.Format(time.RFC3339), i.Add(interval).Format(time.RFC3339))
+		rows, err := h.db.Query(query, i.Add(-interval).Unix(), i.Unix())
 		if err != nil {
 			log.Error("Failed to query historical health", err)
 			return HealthReport{}, err
@@ -104,8 +127,6 @@ func (h *HTTPServer) getSubsystemHealth(from, to time.Time, interval time.Durati
 			rows.Scan(&unit.Name, &unit.Timestamp, &unit.Load, &unit.State, &unit.Sub, &unit.RawLabel)
 			units = append(units, unit)
 		}
-
-		groupedUnits := make(map[string][]collector.Unit)
 
 		for _, collecter := range h.cfg.Collectors {
 			for _, node := range collecter.Nodes {
@@ -124,10 +145,10 @@ func (h *HTTPServer) getSubsystemHealth(from, to time.Time, interval time.Durati
 			groupedUnits[group] = append(groupedUnits[group], unit)
 		}
 
-		var healthAtTime timeRange
+		var status StatusTimeFrame
 		for group, units := range groupedUnits {
 			if len(units) == 0 {
-				healthAtTime.Statuses = append(healthAtTime.Statuses, subSystem{
+				status.Statuses = append(status.Statuses, SubSystemStatus{
 					Name:   group,
 					Health: "none",
 				})
@@ -146,24 +167,24 @@ func (h *HTTPServer) getSubsystemHealth(from, to time.Time, interval time.Durati
 				}
 			}
 			if activeUnits == len(units) {
-				healthAtTime.Statuses = append(healthAtTime.Statuses, subSystem{
+				status.Statuses = append(status.Statuses, SubSystemStatus{
 					Name:   group,
 					Health: "normal",
 				})
 			} else if activeUnits == 0 || highImportanceFails {
-				healthAtTime.Statuses = append(healthAtTime.Statuses, subSystem{
+				status.Statuses = append(status.Statuses, SubSystemStatus{
 					Name:   group,
 					Health: "down",
 				})
 			} else {
-				healthAtTime.Statuses = append(healthAtTime.Statuses, subSystem{
+				status.Statuses = append(status.Statuses, SubSystemStatus{
 					Name:   group,
 					Health: "degraded",
 				})
 			}
 		}
-		healthAtTime.Timestamp = i
-		report.Report = append(report.Report, healthAtTime)
+		status.Timestamp = i
+		report.Report = append(report.Report, status)
 	}
 	return report, nil
 }
