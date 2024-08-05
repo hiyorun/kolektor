@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"kolektor/config"
-	"log"
 	"os/exec"
 	"time"
+
+	"github.com/charmbracelet/log"
 )
 
 type (
@@ -67,8 +68,8 @@ func (sc *SystemdCollector) Run(metrics chan<- interface{}) {
 			}
 
 			if err := json.Unmarshal(output, &statuses); err != nil {
-				log.Printf("Error decoding JSON: %s\n", err)
-				continue
+					log.Error("Error decoding JSON", err)
+					return
 			}
 
 			var filtered []Unit
@@ -122,7 +123,7 @@ func findUnit(statuses []Unit, name string, hostname string, service config.Serv
 // Close implements the Close method for SystemdCollector
 func (sc *SystemdCollector) Close() error {
 	sc.Ticker.Stop()
-	log.Println("Stopping Systemd Kolektor...")
+	log.Debug("Stopping Systemd Kolektor...")
 	return nil
 }
 
