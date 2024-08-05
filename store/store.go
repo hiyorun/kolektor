@@ -19,22 +19,22 @@ type (
 		Close()
 	}
 
-	SkuyliteStore struct {
+	SQLiteStore struct {
 		dataChan <-chan interface{}
 		db       *sql.DB
 		cfg      *config.Store
 	}
 )
 
-func NewSkuyliteStore(dataChan <-chan interface{}, cfg *config.Store, db *sql.DB) SkuyliteStore {
-	return SkuyliteStore{
+func NewSQLiteStore(dataChan <-chan interface{}, cfg *config.Store, db *sql.DB) SQLiteStore {
+	return SQLiteStore{
 		dataChan: dataChan,
 		db:       db,
 		cfg:      cfg,
 	}
 }
 
-func (ss *SkuyliteStore) Run() {
+func (ss *SQLiteStore) Run() {
 	createTableQuery := `
 		CREATE TABLE IF NOT EXISTS service_status (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -48,9 +48,16 @@ func (ss *SkuyliteStore) Run() {
 		);
 	`
 
+	createIndex := `create index if not exists idx_timestamp on service_status(timestamp);`
+
 	_, err := ss.db.Exec(createTableQuery)
 	if err != nil {
-		log.Fatal("Error while creating table:", err.Error())
+		log.Fatal("Error while creating table", err)
+		return
+	}
+	_, err = ss.db.Exec(createIndex)
+	if err != nil {
+		log.Fatal("Error while creating index", err)
 		return
 	}
 
@@ -59,7 +66,7 @@ func (ss *SkuyliteStore) Run() {
 	}
 }
 
-func (ss *SkuyliteStore) processDataFromCollector(data interface{}) {
+func (ss *SQLiteStore) processDataFromCollector(data interface{}) {
 	switch v := data.(type) {
 	case []collector.Unit:
 		go ss.saveSystemdData(v)
@@ -68,7 +75,7 @@ func (ss *SkuyliteStore) processDataFromCollector(data interface{}) {
 	}
 }
 
-func (ss *SkuyliteStore) saveSystemdData(data []collector.Unit) {
+func (ss *SQLiteStore) saveSystemdData(data []collector.Unit) {
 	if ss.cfg.Retention == time.Duration(0) {
 		ss.cfg.Retention = time.Duration(24) * time.Hour
 	}
@@ -91,7 +98,7 @@ func (ss *SkuyliteStore) saveSystemdData(data []collector.Unit) {
 			log.Error("Error marshalling label", err)
 		}
 
-		// Check for last state if config saveChange is true
+		// Check for last state if config OnChange is true
 		if ss.cfg.OnChange {
 			query := `
 				with named as (
@@ -142,6 +149,6 @@ func (ss *SkuyliteStore) saveSystemdData(data []collector.Unit) {
 	}
 }
 
-func (ss *SkuyliteStore) Close() error {
+func (ss *SQLiteStore) Close() error {
 	return nil
 }
