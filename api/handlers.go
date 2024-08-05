@@ -2,11 +2,11 @@ package api
 
 import (
 	"encoding/json"
-	"fmt"
 	"kolektor/collector"
-	"log"
 	"net/http"
 	"time"
+
+	"github.com/charmbracelet/log"
 )
 
 type healthReport struct {
@@ -43,14 +43,14 @@ func (h *HTTPServer) SysHealth(w http.ResponseWriter, r *http.Request) {
 
 	healthReport, err := h.getSubsystemHealth(timeFrom, timeTo, duration)
 	if err != nil {
-		log.Println(err)
+		log.Error("Can not get latest health report", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	res, err := json.Marshal(healthReport)
 	if err != nil {
-		log.Println(err)
+		log.Error("Failed to marshal health latest report", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -95,8 +95,8 @@ func (h *HTTPServer) getSubsystemHealth(from, to time.Time, interval time.Durati
 		`
 		rows, err := h.db.Query(query, from.Format(time.RFC3339), i.Add(interval).Format(time.RFC3339))
 		if err != nil {
-			log.Println(err)
-			return healthReport{}, err
+			log.Error("Failed to query historical health", err)
+			return HealthReport{}, err
 		}
 
 		for rows.Next() {
@@ -117,8 +117,8 @@ func (h *HTTPServer) getSubsystemHealth(from, to time.Time, interval time.Durati
 
 		for _, unit := range units {
 			if err := json.Unmarshal(unit.RawLabel, &unit.Label); err != nil {
-				fmt.Println("Error parsing label:", err)
-				return healthReport{}, err
+				log.Error("Error parsing label", err)
+				return HealthReport{}, err
 			}
 			group := unit.Label.Group
 			groupedUnits[group] = append(groupedUnits[group], unit)

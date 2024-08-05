@@ -3,10 +3,12 @@ package store
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"kolektor/collector"
 	"kolektor/config"
-	"log"
 	"time"
+
+	"github.com/charmbracelet/log"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -62,7 +64,7 @@ func (ss *SkuyliteStore) processDataFromCollector(data interface{}) {
 	case []collector.Unit:
 		go ss.saveSystemdData(v)
 	default:
-		log.Printf("Unsupported data type: %T", v)
+		log.Error("Unsupported data type", "data", fmt.Sprint(v))
 	}
 }
 
@@ -80,13 +82,13 @@ func (ss *SkuyliteStore) saveSystemdData(data []collector.Unit) {
 
 	_, err := ss.db.Exec(delete, time.Now().Add(-ss.cfg.Retention))
 	if err != nil {
-		log.Printf("Error deleting data: %v", err)
+		log.Error("Error deleting data", err)
 	}
 
 	for _, unit := range data {
 		label, err := json.Marshal(unit.Label)
 		if err != nil {
-			log.Printf("Error marshalling label: %v", err)
+			log.Error("Error marshalling label", err)
 		}
 
 		// Check for last state if config saveChange is true
@@ -129,16 +131,17 @@ func (ss *SkuyliteStore) saveSystemdData(data []collector.Unit) {
 			if err == nil {
 				continue
 			} else if err != sql.ErrNoRows {
-				log.Fatal(err)
+				log.Fatal("Error scanning data", err)
 			}
 		}
 
 		_, err = ss.db.Exec("INSERT INTO service_status (id, timestamp, type, name, load, status, substatus, label) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", nil, unit.Timestamp, "systemd", unit.Name, unit.Load, unit.State, unit.Sub, label)
 		if err != nil {
-			log.Printf("Error inserting data into SQLite: %v", err)
+			log.Error("Error inserting data into SQLite", err)
 		}
 	}
 }
 
-func (ss *SkuyliteStore) Close() {
+func (ss *SkuyliteStore) Close() error {
+	return nil
 }

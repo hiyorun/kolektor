@@ -7,10 +7,11 @@ import (
 	"kolektor/config"
 	"kolektor/db"
 	"kolektor/store"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/charmbracelet/log"
 )
 
 func ListenSignal(interrupt func()) {
@@ -27,59 +28,77 @@ func ListenSignal(interrupt func()) {
 
 func main() {
 	cfgPath := flag.String("c", "./config.yaml", "Path to YAML configuration file")
+	verboseLog := flag.Bool("v", false, "Enable debug logging")
+	silentLog := flag.Bool("s", false, "Error only logging")
 	flag.Parse()
 
-	log.Println("Loading config...")
+	log.SetLevel(log.InfoLevel)
+	if *verboseLog {
+		log.SetLevel(log.DebugLevel)
+	} else if *silentLog {
+		log.SetLevel(log.ErrorLevel)
+	}
+	log.Debug("Loading config...")
 	config, err := config.Load(*cfgPath)
 	if err != nil {
-		log.Fatal(err.Error())
+		log.Fatal("Loading config", err)
 	}
 
-	log.Println("Connecting to database...")
+	log.Debug("Connecting to database...")
 	db, err := db.Open(config)
 	if err != nil {
-		log.Fatal("Error opening db:", err.Error())
+		log.Fatal("Error opening db", err)
 	}
 
 	metrics := make(chan interface{})
 
-	log.Println("Starting store...")
+	log.Debug("Starting store...")
 	var store = store.NewSkuyliteStore(metrics, &config.Store, db)
 	go store.Run()
 
 	var collectors []collector.Collector
-	log.Println("Starting Kolektor...")
+	log.Debug("Starting Kolektor...")
 	for i, collectorCfg := range config.Collectors {
 		collectorInstance, err := collector.CollectorFactory(collectorCfg, collectorCfg.Interval)
 		if err != nil {
-			log.Fatal(err.Error())
+			log.Fatal("Error creating collector", err)
 		}
 
 		collectors = append(collectors, collectorInstance)
 		go collectorInstance.Run(metrics)
-		log.Printf("Started %s collector %d", collectorCfg.Type, i+1)
+		log.Infof("Started %s collector %d", collectorCfg.Type, i+1)
 	}
 
-	log.Printf("HTTP Server is listening on %s:%s", config.HTTP.Host, config.HTTP.Port)
+	log.Infof("HTTP Server is listening on %s:%s", config.HTTP.Host, config.HTTP.Port)
 	var httpServer = api.NewHTTPServer(config, db)
 	go httpServer.Run()
 
 	ListenSignal(func() {
-		log.Println("Stopping Kolektor...")
+		log.Debug("Stopping Kolektor...")
 		for _, collectorInstance := range collectors {
-			collectorInstance.Close()
+			err := collectorInstance.Close()
+			if err != nil {
+				log.Fatal("Error closing collector", err)
+			}
 		}
 
-		log.Println("Stopping store...")
-		store.Close()
-
-		log.Println("Stopping HTTP Server...")
-		httpServer.Close()
-
-		log.Println("Closing database...")
-		err := db.Close()
+		log.Debug("Stopping store...")
+		err = store.Close()
 		if err != nil {
-			log.Fatal("Error closing db:", err.Error())
+			log.Fatal("Error closing store", err)
 		}
+
+		log.Debug("Stopping HTTP Server...")
+		err = httpServer.Close()
+		if err != nil {
+			log.Fatal("Error closing http server", err)
+		}
+
+		log.Debug("Closing database...")
+		err = db.Close()
+		if err != nil {
+			log.Fatal("Error closing db", err)
+		}
+		log.Info("Kolektor stopped")
 	})
 }

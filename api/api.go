@@ -4,8 +4,9 @@ import (
 	"database/sql"
 	"fmt"
 	"kolektor/config"
-	"log"
 	"net/http"
+
+	"github.com/charmbracelet/log"
 )
 
 type HTTPServer struct {
@@ -31,7 +32,7 @@ func (s *HTTPServer) Run() {
 		http.HandleFunc(endpoint.Pattern, endpoint.Handler)
 	}
 
-	log.Println(s.httpServer.ListenAndServe())
+	log.Info(fmt.Sprint(s.httpServer.ListenAndServe()))
 }
 
 func (s *HTTPServer) Close() error {

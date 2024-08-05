@@ -7,8 +7,8 @@ collectors:
   - interval: 5s              # you can initiate more collectors with different intervals.
     type: systemd             # type can be: systemd
     nodes:
-      - ip: 172.10.25.17
-        username: rhel
+      - ip: client-ip-addr
+        username: client-username
         services:
           - name: redis
             group: redis
@@ -18,8 +18,9 @@ collectors:
           - name: nginx
             group: frontend
             importance: low
-      - ip: 172.10.25.15
-        username: rhel
+
+      - ip: another-client-ip-addr
+        username: client-username
         services:
           - name: frontend
             group: frontend
@@ -28,21 +29,22 @@ collectors:
   - interval: 2s
     type: systemd
     nodes:
-      - ip: 172.10.25.5
-        username: hiyo
+      - ip: client-ip-addr
+        username: client-username
         services:
           - name: coredns
             group: dns
             importance: low
-      - ip: 172.10.25.3
-        username: hiyo
+
+      - ip: yet-another-client-ip-addr
+        username: client-username
         services:
           - name: coredns
             group: dns
             importance: low
 
 database:
-  path: /tmp/kolektor
+  path: /path/to/store/sqlite.db
 
 http:
   host: 0.0.0.0
