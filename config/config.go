@@ -31,10 +31,10 @@ type (
 		Services []Service `yaml:"services,omitempty"`
 	}
 	Service struct {
-		Name       string `yaml:"name"`
-		Group      string `yaml:"group,omitempty"`
-		Importance string `yaml:"importance,omitempty"`
-		Ports      []int  `yaml:"ports,omitempty"`
+		Name       string   `yaml:"name"`
+		Group      string   `yaml:"group,omitempty"`
+		Importance string   `yaml:"importance,omitempty"`
+		Suffix     []string `yaml:"suffix,omitempty"`
 	}
 	Store struct {
 		OnChange  bool          `yaml:"on_change,omitempty"`

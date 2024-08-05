@@ -45,49 +45,52 @@ func NewSystemdCollector(nodes []config.Node, interval time.Duration) *SystemdCo
 func (sc *SystemdCollector) Run(metrics chan<- interface{}) {
 	for range sc.Ticker.C {
 		for _, node := range sc.Nodes {
-			var statuses []Unit
-			var nodeConn string
-			if node.Hostname == "" {
-				nodeConn = node.IP
-			}
+			go func(node config.Node, metrics chan<- interface{}) {
+				var statuses []Unit
+				var nodeConn string
+				if node.Hostname == "" {
+					nodeConn = node.IP
+				}
 
-			if node.IP == "" {
-				nodeConn = node.Hostname
-			}
+				if node.IP == "" {
+					nodeConn = node.Hostname
+				}
 
-			if nodeConn == "" {
-				log.Fatal("Hostname and IP is empty. Need to declare at least one of them.")
-			}
+				if nodeConn == "" {
+					log.Fatal("Hostname and IP is empty. Need to declare at least one of them.")
+				}
 
-			cmd := exec.Command("systemctl", "list-units", "-H", fmt.Sprintf("%s@%s", node.Username, nodeConn), "-o", "json", "--no-pager")
+				log.Debug("Get status", "node", nodeConn)
+				cmd := exec.Command("systemctl", "list-units", "-H", fmt.Sprintf("%s@%s", node.Username, nodeConn), "-o", "json", "--no-pager")
 
-			output, err := cmd.CombinedOutput()
-			if err != nil {
-				log.Printf("err: %s, %s", err, output)
-				continue
-			}
+				output, err := cmd.Output()
+				if err != nil {
+					log.Debug("Can not get status", "node", nodeConn, err, "output", string(output))
+					output = json.RawMessage("[]")
+				}
 
-			if err := json.Unmarshal(output, &statuses); err != nil {
+				if err := json.Unmarshal(output, &statuses); err != nil {
 					log.Error("Error decoding JSON", err)
 					return
-			}
+				}
 
-			var filtered []Unit
-			for _, service := range node.Services {
-				if len(service.Ports) > 0 {
-					if service.Importance == "" {
-						service.Importance = "low"
-					}
-					for _, port := range service.Ports {
-						unit := findUnit(statuses, fmt.Sprintf("%s@%d.service", service.Name, port), nodeConn, service)
+				var filtered []Unit
+				for _, service := range node.Services {
+					if len(service.Suffix) > 0 {
+						if service.Importance == "" {
+							service.Importance = "low"
+						}
+						for _, port := range service.Suffix {
+							unit := findUnit(statuses, fmt.Sprintf("%s@%s.service", service.Name, port), nodeConn, service)
+							filtered = append(filtered, unit)
+						}
+					} else {
+						unit := findUnit(statuses, fmt.Sprintf("%s.service", service.Name), nodeConn, service)
 						filtered = append(filtered, unit)
 					}
-				} else {
-					unit := findUnit(statuses, fmt.Sprintf("%s.service", service.Name), nodeConn, service)
-					filtered = append(filtered, unit)
 				}
-			}
-			metrics <- filtered
+				metrics <- filtered
+			}(node, metrics)
 		}
 	}
 }
@@ -126,5 +129,3 @@ func (sc *SystemdCollector) Close() error {
 	log.Debug("Stopping Systemd Kolektor...")
 	return nil
 }
-
-// report_id, type_id, requested_by, status, format, digital_signed, generated_at

@@ -53,7 +53,7 @@ func main() {
 	metrics := make(chan interface{})
 
 	log.Debug("Starting store...")
-	var store = store.NewSkuyliteStore(metrics, &config.Store, db)
+	var store = store.NewSQLiteStore(metrics, &config.Store, db)
 	go store.Run()
 
 	var collectors []collector.Collector
